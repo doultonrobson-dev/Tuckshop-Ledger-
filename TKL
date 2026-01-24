@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Finance Tracker 2026</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        :root { --in: #16a34a; --out: #dc2626; --accent: #2563eb; --bg: #f8fafc; --text: #1e293b; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 15px; margin: 0; line-height: 1.5; }
+        .card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h2, h3 { margin-top: 0; font-weight: 700; }
+        
+        /* Layout & Forms */
+        .flex-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 700; }
+        select, input { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 16px; background: #fff; box-sizing: border-box; }
+        
+        /* Buttons */
+        .tab-group { display: flex; background: #f1f5f9; padding: 4px; border-radius: 12px; margin-bottom: 20px; }
+        .tab-btn { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; transition: 0.2s; color: #64748b; }
+        .tab-btn.active-in { background: var(--in); color: white; }
+        .tab-btn.active-out { background: var(--out); color: white; }
+        
+        .btn-process { width: 100%; padding: 16px; background: var(--accent); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 10px; }
+        .btn-sm { padding: 4px 8px; font-size: 12px; border-radius: 4px; border: 1px solid #cbd5e1; cursor: pointer; }
+        .btn-del { color: var(--out); border-color: var(--out); }
+
+        /* Summaries */
+        .summary-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 15px; }
+        .summary-total { font-weight: 700; font-size: 18px; margin-top: 10px; color: var(--accent); }
+        .hidden { display: none; }
+        #ocrStatus { font-size: 12px; color: var(--accent); margin-top: 4px; font-weight: 500; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <label>Current View</label>
+    <div class="flex-row">
+        <select id="viewMonth" onchange="renderApp()"></select>
+        <select id="viewYear" onchange="renderApp()">
+            <option>2025</option><option selected>2026</option><option>2027</option>
+        </select>
+    </div>
+</div>
+
+<div class="card">
+    <div class="tab-group">
+        <button id="tabIn" class="tab-btn active-in" onclick="setEntryMode('in')">Money In</button>
+        <button id="tabOut" class="tab-btn" onclick="setEntryMode('out')">Money Out</button>
+    </div>
+
+    <div class="form-group">
+        <label>Day</label>
+        <select id="entryDay"></select>
+    </div>
+
+    <div class="form-group">
+        <label>Total Amount</label>
+        <input type="number" id="entryAmount" step="0.01" placeholder="0.00">
+    </div>
+
+    <div id="outOnlyFields" class="hidden">
+        <div class="form-group">
+            <label>Category</label>
+            <select id="entryCategory"></select>
+        </div>
+        <div class="form-group">
+            <label>Supplier</label>
+            <select id="entrySupplier"></select>
+        </div>
+        <div class="form-group">
+            <label>Scan Receipt (Camera)</label>
+            <input type="file" id="cameraInput" accept="image/*" capture="environment">
+            <div id="ocrStatus"></div>
+        </div>
+    </div>
+
+    <button class="btn-process" onclick="processEntry()">PROCESS DATA</button>
+</div>
+
+<div class="card">
+    <h3>Monthly Summary</h3>
+    <div id="monthSummaryUI"></div>
+</div>
+
+<div class="card">
+    <h3>Yearly Supplier Spending</h3>
+    <div id="yearSupplierUI"></div>
+</div>
+
+<div class="card" style="background: #f8fafc; border: 1px solid #e2e8f0;">
+    <h3>Edit Menus</h3>
+    <div class="form-group">
+        <label>Add Category</label>
+        <div class="flex-row">
+            <input type="text" id="newCatName" placeholder="e.g. Rent">
+            <button class="btn-sm" onclick="addItem('cats', 'newCatName')">Add</button>
+        </div>
+        <div id="listCats"></div>
+    </div>
+    <hr>
+    <div class="form-group">
+        <label>Add Supplier</label>
+        <div class="flex-row">
+            <input type="text" id="newSupName" placeholder="e.g. Amazon">
+            <button class="btn-sm" onclick="addItem('sups', 'newSupName')">Add</button>
+        </div>
+        <div id="listSups"></div>
+    </div>
+</div>
+
+<script>
+    let mode = 'in';
+    let records = JSON.parse(localStorage.getItem('f_data')) || [];
+    let cats = JSON.parse(localStorage.getItem('f_cats')) || ['Salary', 'Groceries', 'Utilities', 'Travel'];
+    let sups = JSON.parse(localStorage.getItem('f_sups')) || ['Employer', 'Local Shop', 'Gas Station'];
+
+    // Setup UI components
+    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const mSel = document.getElementById('viewMonth');
+    months.forEach((m, i) => mSel.innerHTML += `<option value="${i}">${m}</option>`);
+    mSel.value = new Date().getMonth();
+
+    const dSel = document.getElementById('entryDay');
+    for(let i=1; i<=31; i++) dSel.innerHTML += `<option value="${i}">${i}</option>`;
+    dSel.value = new Date().getDate();
+
+    function setEntryMode(m) {
+        mode = m;
+        document.getElementById('tabIn').className = m === 'in' ? 'tab-btn active-in' : 'tab-btn';
+        document.getElementById('tabOut').className = m === 'out' ? 'tab-btn active-out' : 'tab-btn';
+        document.getElementById('outOnlyFields').classList.toggle('hidden', m === 'in');
+    }
+
+    function addItem(type, inputId) {
+        let val = document.getElementById(inputId).value.trim();
+        if(!val) return;
+        if(type === 'cats') cats.push(val); else sups.push(val);
+        document.getElementById(inputId).value = '';
+        saveMeta();
+    }
+
+    function deleteItem(type, index) {
+        if(type === 'cats') cats.splice(index, 1); else sups.splice(index, 1);
+        saveMeta();
+    }
+
+    function saveMeta() {
+        localStorage.setItem('f_cats', JSON.stringify(cats));
+        localStorage.setItem('f_sups', JSON.stringify(sups));
+        renderApp();
+    }
+
+    function processEntry() {
+        const amt = parseFloat(document.getElementById('entryAmount').value);
+        if(!amt) { alert("Please enter an amount."); return; }
+
+        const entry = {
+            id: Date.now(),
+            type: mode,
+            month: document.getElementById('viewMonth').value,
+            year: document.getElementById('viewYear').value,
+            day: document.getElementById('entryDay').value,
+            amount: amt,
+            category: mode === 'out' ? document.getElementById('entryCategory').value : 'Income',
+            supplier: mode === 'out' ? document.getElementById('entrySupplier').value : 'N/A'
+        };
+
+        records.push(entry);
+        localStorage.setItem('f_data', JSON.stringify(records));
+        document.getElementById('entryAmount').value = '';
+        renderApp();
+        alert("Data saved successfully.");
+    }
+
+    function renderApp() {
+        // Update entry dropdowns
+        document.getElementById('entryCategory').innerHTML = cats.map(c => `<option>${c}</option>`).join('');
+        document.getElementById('entrySupplier').innerHTML = sups.map(s => `<option>${s}</option>`).join('');
+        
+        // Update Edit lists
+        document.getElementById('listCats').innerHTML = cats.map((c, i) => `<span class="btn-sm">${c} <span class="btn-del" onclick="deleteItem('cats', ${i})">×</span></span> `).join('');
+        document.getElementById('listSups').innerHTML = sups.map((s, i) => `<span class="btn-sm">${s} <span class="btn-del" onclick="deleteItem('sups', ${i})">×</span></span> `).join('');
+
+        const vM = document.getElementById('viewMonth').value;
+        const vY = document.getElementById('viewYear').value;
+
+        // Monthly Summary
+        const monthlyRecords = records.filter(r => r.month == vM && r.year == vY);
+        const mIn = monthlyRecords.filter(r => r.type === 'in').reduce((sum, r) => sum + r.amount, 0);
+        const mOut = monthlyRecords.filter(r => r.type === 'out').reduce((sum, r) => sum + r.amount, 0);
+
+        document.getElementById('monthSummaryUI').innerHTML = `
+            <div class="summary-line"><span>Money In:</span><span style="color:var(--in)">+$${mIn.toFixed(2)}</span></div>
+            <div class="summary-line"><span>Money Out:</span><span style="color:var(--out)">-$${mOut.toFixed(2)}</span></div>
+            <div class="summary-total">Balance: $${(mIn - mOut).toFixed(2)}</div>
+        `;
+
+        // Yearly Supplier Summary
+        const yearlyOut = records.filter(r => r.year == vY && r.type === 'out');
+        const supplierTotals = {};
+        yearlyOut.forEach(r => {
+            supplierTotals[r.supplier] = (supplierTotals[r.supplier] || 0) + r.amount;
+        });
+
+        let supplierHTML = "";
+        for(let s in supplierTotals) {
+            supplierHTML += `<div class="summary-line"><span>${s}</span><b>$${supplierTotals[s].toFixed(2)}</b></div>`;
+        }
+        document.getElementById('yearSupplierUI').innerHTML = supplierHTML || "No supplier data for this year.";
+    }
+
+    // OCR CAMERA LOGIC
+    document.getElementById('cameraInput').addEventListener('change', function(e) {
+        const status = document.getElementById('ocrStatus');
+        status.innerText = "Scanning receipt... hold on.";
+        Tesseract.recognize(e.target.files[0], 'eng').then(({ data: { text } }) => {
+            const matches = text.match(/\d+\.\d{2}/g);
+            if(matches) {
+                const total = Math.max(...matches.map(Number));
+                document.getElementById('entryAmount').value = total;
+                status.innerText = "Found amount: $" + total;
+            } else {
+                status.innerText = "Couldn't find price. Please enter manually.";
+            }
+        });
+    });
+
+    renderApp();
+</script>
+</body>
+</html>
