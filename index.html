@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro-Ledger Dashboard</title>
+    <title>Pro-Ledger Finance</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -12,19 +12,19 @@
         <aside class="sidebar">
             <h2>Pro-Ledger</h2>
             <nav>
-                <button onclick="showTab('dashboard')">Dashboard</button>
-                <button onclick="showTab('entry-form')">Invoices & Expenses</button>
+                <button class="nav-btn" onclick="showTab('dashboard')">📊 Dashboard</button>
+                <button class="nav-btn" onclick="showTab('entry-form')">📝 Invoices & Expenses</button>
             </nav>
         </aside>
 
         <main class="content">
             <section id="dashboard" class="tab-content">
                 <div class="stats-grid">
-                    <div class="card income"><h3>Total Income</h3><p id="total-income">$0.00</p></div>
-                    <div class="card expense"><h3>Total Expenses</h3><p id="total-expense">$0.00</p></div>
+                    <div class="card income"><h3>Income</h3><p id="total-income">$0.00</p></div>
+                    <div class="card expense"><h3>Expenses</h3><p id="total-expense">$0.00</p></div>
                     <div class="card balance"><h3>Net Profit</h3><p id="net-balance">$0.00</p></div>
                 </div>
-                <div style="height: 300px;">
+                <div class="chart-container">
                     <canvas id="financeChart"></canvas>
                 </div>
             </section>
@@ -32,21 +32,26 @@
             <section id="entry-form" class="tab-content" style="display:none;">
                 <h2>Add Transaction</h2>
                 <div class="form-group">
-                    <input type="text" id="desc" placeholder="Description">
-                    <input type="number" id="amount" placeholder="Amount">
+                    <input type="text" id="desc" placeholder="Client/Vendor Name">
+                    <input type="number" id="amount" placeholder="Amount (0.00)">
                     <select id="type">
-                        <option value="income">Income</option>
+                        <option value="income">Income (Invoice)</option>
                         <option value="expense">Expense</option>
                     </select>
-                    <button class="btn-primary" onclick="addEntry()">Save</button>
-                    <button class="btn-primary" style="background-color: #393a3d;" onclick="downloadCSV()">Download Backup</button>
+                    <div class="button-row">
+                        <button class="btn-save" onclick="addEntry()">Save Entry</button>
+                        <button class="btn-download" onclick="downloadCSV()">Download Excel (CSV)</button>
+                    </div>
                 </div>
-                <table>
-                    <thead>
-                        <tr><th>Description</th><th>Type</th><th>Amount</th><th>Date</th></tr>
-                    </thead>
-                    <tbody id="table-body"></tbody>
-                </table>
+                
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr><th>Description</th><th>Type</th><th>Amount</th><th>Date</th></tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
             </section>
         </main>
     </div>
