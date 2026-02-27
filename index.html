@@ -27,6 +27,9 @@
         .mini-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .mini-table td { padding: 12px 5px; border-bottom: 1px solid #f1f5f9; }
         .chip { display: inline-block; background: #e2e8f0; padding: 4px 8px; border-radius: 15px; font-size: 11px; margin: 2px; }
+        
+        #annualSummaryTable { width: 100%; font-size: 12px; margin-top: 10px; border-top: 1px solid #eee; }
+        #annualSummaryTable td { padding: 5px 0; }
     </style>
 </head>
 <body>
@@ -36,12 +39,22 @@
 </div>
 
 <div class="card" style="background: #eff6ff; border: 1px solid #dbeafe;">
-    <label id="dashTitle">PERFORMANCE</label>
+    <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <label id="dashTitle" style="margin:0;">PERFORMANCE</label>
+        <select id="viewType" onchange="renderApp()" style="width:auto; padding:4px; font-size:10px; height:auto; margin:0;">
+            <option value="month">Current Month</option>
+            <option value="year">Full Year View</option>
+        </select>
+    </div>
     <div class="stat-grid">
-        <div class="stat-item"><small>Avg. Spend/mo</small><strong id="avgSpend">R0</strong></div>
-        <div class="stat-item"><small>Best Savings Mo</small><strong id="bestMonth">None</strong></div>
-        <div class="stat-item"><small>Month In</small><strong id="statIn" style="color:var(--in)">R0</strong></div>
-        <div class="stat-item"><small>Month Out</small><strong id="statOut" style="color:var(--out)">R0</strong></div>
+        <div class="stat-item"><small id="leftStatLabel">Avg Spend</small><strong id="avgSpend">R0</strong></div>
+        <div class="stat-item"><small id="rightStatLabel">Savings Mo</small><strong id="bestMonth">None</strong></div>
+        <div class="stat-item"><small id="inLabel">Month In</small><strong id="statIn" style="color:var(--in)">R0</strong></div>
+        <div class="stat-item"><small id="outLabel">Month Out</small><strong id="statOut" style="color:var(--out)">R0</strong></div>
+    </div>
+    <div id="annualBreakdown" style="display:none; margin-top:10px;">
+        <label>Yearly Spending by Supplier</label>
+        <table id="annualSummaryTable"></table>
     </div>
 </div>
 
@@ -107,7 +120,7 @@
         document.getElementById('entryDay').innerHTML = Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');
         document.getElementById('entryDay').value = new Date().getDate();
         renderApp();
-        loadSelections(); // Restore sticky choices on load
+        loadSelections(); 
     }
 
     function setMode(m) {
@@ -131,22 +144,17 @@
     function processEntry() {
         const amt = parseFloat(document.getElementById('entryAmount').value);
         if(!amt) return;
-        
         const sup = mode === 'out' ? document.getElementById('entrySupplier').value : 'Income';
         const cat = mode === 'out' ? document.getElementById('entryCategory').value : 'Salary';
-
         records.push({
             id: Date.now(), type: mode,
             year: parseInt(document.getElementById('entryYear').value),
             month: parseInt(document.getElementById('entryMonth').value),
             day: parseInt(document.getElementById('entryDay').value),
-            amount: amt,
-            supplier: sup,
-            category: cat
+            amount: amt, supplier: sup, category: cat
         });
-
         localStorage.setItem('f_data', JSON.stringify(records));
-        saveSelections(); // Ensure sticky memory is updated on save
+        saveSelections();
         document.getElementById('entryAmount').value = '';
         renderApp();
     }
@@ -154,8 +162,6 @@
     function renderApp() {
         document.getElementById('entryCategory').innerHTML = cats.map(c=>`<option>${c}</option>`).join('');
         document.getElementById('entrySupplier').innerHTML = sups.map(s=>`<option>${s}</option>`).join('');
-        
-        // Restore values after re-rendering the list options
         loadSelections();
 
         document.getElementById('manageSups').innerHTML = sups.map((s,i)=>`<span class="chip">${s}<span onclick="removeListItem('sups',${i})">×</span></span>`).join('');
@@ -163,34 +169,60 @@
 
         const selY = parseInt(document.getElementById('entryYear').value);
         const selM = parseInt(document.getElementById('entryMonth').value);
-        document.getElementById('dashTitle').innerText = `${selY} PERFORMANCE`;
+        const viewType = document.getElementById('viewType').value;
 
         const yearRecords = records.filter(r => r.year === selY);
+        const yearIn = yearRecords.filter(r => r.type === 'in').reduce((s,r) => s + r.amount, 0);
+        const yearOut = yearRecords.filter(r => r.type === 'out').reduce((s,r) => s + r.amount, 0);
+        
+        // Annual stats for labels
         let monthTotals = Array(12).fill(0).map(() => ({ in: 0, out: 0 }));
         yearRecords.forEach(r => {
             if(r.type === 'in') monthTotals[r.month].in += r.amount;
             else monthTotals[r.month].out += r.amount;
         });
-
-        const totalYearOut = monthTotals.reduce((s, m) => s + m.out, 0);
         const activeMonths = monthTotals.filter(m => m.in > 0 || m.out > 0).length || 1;
-        
         let bestVal = -Infinity; let bestMo = "None";
         monthTotals.forEach((m, i) => {
             let surplus = m.in - m.out;
             if((m.in > 0 || m.out > 0) && surplus > bestVal) { bestVal = surplus; bestMo = months[i]; }
         });
 
-        document.getElementById('avgSpend').innerText = `R${(totalYearOut / activeMonths).toFixed(0)}`;
+        if(viewType === 'year') {
+            document.getElementById('dashTitle').innerText = `${selY} ANNUAL SUMMARY`;
+            document.getElementById('inLabel').innerText = "Year In";
+            document.getElementById('outLabel').innerText = "Year Out";
+            document.getElementById('statIn').innerText = `R${yearIn.toFixed(0)}`;
+            document.getElementById('statOut').innerText = `R${yearOut.toFixed(0)}`;
+            document.getElementById('annualBreakdown').style.display = 'block';
+            
+            // Generate per-supplier table
+            let supMap = {};
+            yearRecords.filter(r => r.type === 'out').forEach(r => {
+                supMap[r.supplier] = (supMap[r.supplier] || 0) + r.amount;
+            });
+            let sortedSups = Object.entries(supMap).sort((a,b) => b[1] - a[1]);
+            document.getElementById('annualSummaryTable').innerHTML = sortedSups.map(([name, val]) => `
+                <tr><td>${name}</td><td style="text-align:right; font-weight:bold;">R${val.toFixed(2)}</td></tr>
+            `).join('');
+        } else {
+            document.getElementById('dashTitle').innerText = `${months[selM]} ${selY} PERFORMANCE`;
+            document.getElementById('inLabel').innerText = "Month In";
+            document.getElementById('outLabel').innerText = "Month Out";
+            document.getElementById('annualBreakdown').style.display = 'none';
+            const filtered = yearRecords.filter(r => r.month === selM);
+            document.getElementById('statIn').innerText = `R${filtered.filter(r=>r.type==='in').reduce((s,r)=>s+r.amount,0).toFixed(0)}`;
+            document.getElementById('statOut').innerText = `R${filtered.filter(r=>r.type==='out').reduce((s,r)=>s+r.amount,0).toFixed(0)}`;
+        }
+
+        document.getElementById('avgSpend').innerText = `R${(yearOut / activeMonths).toFixed(0)}`;
         document.getElementById('bestMonth').innerText = bestMo;
 
-        const filtered = yearRecords.filter(r => r.month === selM);
-        document.getElementById('statIn').innerText = `R${filtered.filter(r=>r.type==='in').reduce((s,r)=>s+r.amount,0).toFixed(0)}`;
-        document.getElementById('statOut').innerText = `R${filtered.filter(r=>r.type==='out').reduce((s,r)=>s+r.amount,0).toFixed(0)}`;
-
+        // Render History (Always Monthly)
+        const historyFiltered = yearRecords.filter(r => r.month === selM);
         const container = document.getElementById('historyContainer');
         container.innerHTML = '';
-        let sorted = filtered.sort((a,b) => a.supplier.localeCompare(b.supplier) || a.day - b.day);
+        let sorted = historyFiltered.sort((a,b) => a.supplier.localeCompare(b.supplier) || a.day - b.day);
         const q = document.getElementById('searchInput').value.toLowerCase();
         if(q) sorted = sorted.filter(r => r.supplier.toLowerCase().includes(q));
 
@@ -201,56 +233,4 @@
                 currentSup = r.supplier; supTotal = 0; buffer = "";
             }
             supTotal += r.amount;
-            buffer += `<tr><td>${r.day} ${months[r.month]}</td><td>${r.category}</td><td style="text-align:right; font-weight:bold; color:${r.type==='in'?'var(--in)':'var(--text)'}">R${r.amount.toFixed(2)}</td><td style="text-align:right" onclick="deleteRec(${r.id})">🗑️</td></tr>`;
-            if(i === sorted.length - 1) flush(currentSup, supTotal, buffer);
-        });
-    }
-
-    function flush(name, total, html) {
-        document.getElementById('historyContainer').innerHTML += `<div class="group-header"><span>${name.toUpperCase()}</span><span>R${total.toFixed(2)}</span></div><table class="mini-table">${html}</table>`;
-    }
-
-    function addListItem(type) {
-        const val = document.getElementById('newLabelName').value.trim();
-        if(!val) return;
-        if(type==='cats') cats.push(val); else sups.push(val);
-        localStorage.setItem('f_'+type, JSON.stringify(type==='cats'?cats:sups));
-        document.getElementById('newLabelName').value = ''; renderApp();
-    }
-
-    function removeListItem(type, i) {
-        if(confirm("Remove?")) {
-            if(type==='cats') cats.splice(i,1); else sups.splice(i,1);
-            localStorage.setItem('f_'+type, JSON.stringify(type==='cats'?cats:sups));
-            renderApp();
-        }
-    }
-
-    document.getElementById('cameraInput').onchange = async (e) => {
-        const file = e.target.files[0]; if(!file) return;
-        const status = document.getElementById('ocrStatus');
-        status.innerText = "⌛ Scanning...";
-        const worker = await Tesseract.createWorker();
-        try {
-            await worker.loadLanguage('eng'); await worker.initialize('eng');
-            const { data: { text } } = await worker.recognize(file);
-            const m = text.match(/\d+[\.,]\d{2}/g);
-            if(m) document.getElementById('entryAmount').value = Math.max(...m.map(n=>parseFloat(n.replace(',','.'))));
-            sups.forEach(s => { if(text.toUpperCase().includes(s.toUpperCase())) { document.getElementById('entrySupplier').value = s; saveSelections(); } });
-            status.innerText = "✅ Done"; await worker.terminate();
-        } catch (err) { status.innerText = "❌ Failed"; await worker.terminate(); }
-    };
-
-    function exportCSV() {
-        let csv = "Date,Type,Supplier,Category,Amount\n";
-        records.forEach(r => csv += `${r.day} ${months[r.month]} ${r.year},${r.type},${r.supplier},${r.category},${r.amount}\n`);
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "Finance_Backup.csv"; a.click();
-    }
-
-    function deleteRec(id) { if(confirm("Delete?")) { records = records.filter(r=>r.id!==id); localStorage.setItem('f_data',JSON.stringify(records)); renderApp(); } }
-
-    init();
-</script>
-</body>
-</html>
+            buffer += `<tr><td>${r.day} ${months[r.month]}</td><td>${r.category}</td><td style="text-align:right; font
