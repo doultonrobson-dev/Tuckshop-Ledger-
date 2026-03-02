@@ -233,4 +233,56 @@
                 currentSup = r.supplier; supTotal = 0; buffer = "";
             }
             supTotal += r.amount;
-            buffer += `<tr><td>${r.day} ${months[r.month]}</td><td>${r.category}</td><td style="text-align:right; font
+            buffer += `<tr><td>${r.day} ${months[r.month]}</td><td>${r.category}</td><td style="text-align:right; font-weight:bold; color:${r.type==='in'?'var(--in)':'var(--text)'}">R${r.amount.toFixed(2)}</td><td style="text-align:right" onclick="deleteRec(${r.id})">🗑️</td></tr>`;
+            if(i === sorted.length - 1) flush(currentSup, supTotal, buffer);
+        });
+    }
+
+    function flush(name, total, html) {
+        document.getElementById('historyContainer').innerHTML += `<div class="group-header"><span>${name.toUpperCase()}</span><span>R${total.toFixed(2)}</span></div><table class="mini-table">${html}</table>`;
+    }
+
+    function addListItem(type) {
+        const val = document.getElementById('newLabelName').value.trim();
+        if(!val) return;
+        if(type==='cats') cats.push(val); else sups.push(val);
+        localStorage.setItem('f_'+type, JSON.stringify(type==='cats'?cats:sups));
+        document.getElementById('newLabelName').value = ''; renderApp();
+    }
+
+    function removeListItem(type, i) {
+        if(confirm("Remove?")) {
+            if(type==='cats') cats.splice(i,1); else sups.splice(i,1);
+            localStorage.setItem('f_'+type, JSON.stringify(type==='cats'?cats:sups));
+            renderApp();
+        }
+    }
+
+    document.getElementById('cameraInput').onchange = async (e) => {
+        const file = e.target.files[0]; if(!file) return;
+        const status = document.getElementById('ocrStatus');
+        status.innerText = "⌛ Scanning...";
+        const worker = await Tesseract.createWorker();
+        try {
+            await worker.loadLanguage('eng'); await worker.initialize('eng');
+            const { data: { text } } = await worker.recognize(file);
+            const m = text.match(/\d+[\.,]\d{2}/g);
+            if(m) document.getElementById('entryAmount').value = Math.max(...m.map(n=>parseFloat(n.replace(',','.'))));
+            sups.forEach(s => { if(text.toUpperCase().includes(s.toUpperCase())) { document.getElementById('entrySupplier').value = s; saveSelections(); } });
+            status.innerText = "✅ Done"; await worker.terminate();
+        } catch (err) { status.innerText = "❌ Failed"; await worker.terminate(); }
+    };
+
+    function exportCSV() {
+        let csv = "Date,Type,Supplier,Category,Amount\n";
+        records.forEach(r => csv += `${r.day} ${months[r.month]} ${r.year},${r.type},${r.supplier},${r.category},${r.amount}\n`);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Finance_Backup_${new Date().getFullYear()}.csv`; a.click();
+    }
+
+    function deleteRec(id) { if(confirm("Delete?")) { records = records.filter(r=>r.id!==id); localStorage.setItem('f_data',JSON.stringify(records)); renderApp(); } }
+
+    init();
+</script>
+</body>
+</html>
