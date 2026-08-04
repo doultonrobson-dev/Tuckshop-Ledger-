@@ -38,6 +38,7 @@
     <input type="text" id="searchInput" placeholder="🔍 Search Suppliers..." onkeyup="renderApp()">
 </div>
 
+<!-- DASHBOARD WITH ANNUAL SUMMARY -->
 <div class="card" style="background: #eff6ff; border: 1px solid #dbeafe;">
     <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
         <label id="dashTitle" style="margin:0;">PERFORMANCE</label>
@@ -91,8 +92,9 @@
 
 <div id="historyContainer"></div>
 
+<!-- MANAGEMENT SECTION -->
 <div class="card" style="margin-top:30px; border-top: 4px solid var(--accent);">
-    <label>Manage Lists</label>
+    <label>Manage Lists & Data</label>
     <div style="display:flex; gap:5px; margin-bottom:15px;">
         <input type="text" id="newLabelName" placeholder="New name..." style="flex:2; padding:8px;">
         <button onclick="addListItem('sups')" style="flex:1; background:var(--accent); color:white; border:none; border-radius:8px; font-size:10px;">+ SHOP</button>
@@ -101,7 +103,11 @@
     <div id="manageSups"></div><br>
     <div id="manageCats"></div>
     <hr style="border:0; border-top:1px solid #e2e8f0; margin:20px 0;">
-    <button onclick="exportCSV()" style="width:100%; background:#1e293b; color:white; padding:12px; border-radius:10px; border:none; font-weight:bold;">📥 DOWNLOAD EXCEL (CSV)</button>
+    
+    <button onclick="exportCSV()" style="width:100%; background:#1e293b; color:white; padding:12px; border-radius:10px; border:none; font-weight:bold; margin-bottom:10px;">📥 DOWNLOAD EXCEL (CSV)</button>
+    
+    <button onclick="document.getElementById('importInput').click()" style="width:100%; background:#475569; color:white; padding:12px; border-radius:10px; border:none; font-weight:bold;">📤 IMPORT DATA (CSV)</button>
+    <input type="file" id="importInput" accept=".csv" style="display:none;" onchange="importCSV(event)">
 </div>
 
 <script>
@@ -175,7 +181,6 @@
         const yearIn = yearRecords.filter(r => r.type === 'in').reduce((s,r) => s + r.amount, 0);
         const yearOut = yearRecords.filter(r => r.type === 'out').reduce((s,r) => s + r.amount, 0);
         
-        // Annual stats for labels
         let monthTotals = Array(12).fill(0).map(() => ({ in: 0, out: 0 }));
         yearRecords.forEach(r => {
             if(r.type === 'in') monthTotals[r.month].in += r.amount;
@@ -196,7 +201,6 @@
             document.getElementById('statOut').innerText = `R${yearOut.toFixed(0)}`;
             document.getElementById('annualBreakdown').style.display = 'block';
             
-            // Generate per-supplier table
             let supMap = {};
             yearRecords.filter(r => r.type === 'out').forEach(r => {
                 supMap[r.supplier] = (supMap[r.supplier] || 0) + r.amount;
@@ -218,7 +222,6 @@
         document.getElementById('avgSpend').innerText = `R${(yearOut / activeMonths).toFixed(0)}`;
         document.getElementById('bestMonth').innerText = bestMo;
 
-        // Render History (Always Monthly)
         const historyFiltered = yearRecords.filter(r => r.month === selM);
         const container = document.getElementById('historyContainer');
         container.innerHTML = '';
@@ -278,6 +281,48 @@
         records.forEach(r => csv += `${r.day} ${months[r.month]} ${r.year},${r.type},${r.supplier},${r.category},${r.amount}\n`);
         const blob = new Blob([csv], { type: 'text/csv' });
         const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Finance_Backup_${new Date().getFullYear()}.csv`; a.click();
+    }
+
+    function importCSV(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const lines = e.target.result.split('\n');
+            let importedRecords = [];
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                const [dateStr, type, supplier, category, amountStr] = line.split(',');
+                if (!dateStr || !amountStr) continue;
+                const parts = dateStr.split(' ');
+                const day = parseInt(parts[0]);
+                const monthIdx = months.indexOf(parts[1]);
+                const year = parseInt(parts[2]);
+                const amount = parseFloat(amountStr);
+                
+                importedRecords.push({
+                    id: Date.now() + i,
+                    type: type,
+                    year: year,
+                    month: monthIdx,
+                    day: day,
+                    amount: amount,
+                    supplier: supplier,
+                    category: category
+                });
+
+                if (type === 'out' && supplier && !sups.includes(supplier)) sups.push(supplier);
+                if (type === 'out' && category && !cats.includes(category)) cats.push(category);
+            }
+            records = importedRecords;
+            localStorage.setItem('f_data', JSON.stringify(records));
+            localStorage.setItem('f_sups', JSON.stringify(sups));
+            localStorage.setItem('f_cats', JSON.stringify(cats));
+            alert("Data imported successfully!");
+            renderApp();
+        };
+        reader.readAsText(file);
     }
 
     function deleteRec(id) { if(confirm("Delete?")) { records = records.filter(r=>r.id!==id); localStorage.setItem('f_data',JSON.stringify(records)); renderApp(); } }
