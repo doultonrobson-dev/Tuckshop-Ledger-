@@ -28,8 +28,8 @@
         .mini-table td { padding: 12px 5px; border-bottom: 1px solid #f1f5f9; }
         .chip { display: inline-block; background: #e2e8f0; padding: 4px 8px; border-radius: 15px; font-size: 11px; margin: 2px; }
         
-        #annualSummaryTable { width: 100%; font-size: 12px; margin-top: 10px; border-top: 1px solid #eee; }
-        #annualSummaryTable td { padding: 5px 0; }
+        .summary-table { width: 100%; font-size: 12px; margin-top: 8px; border-top: 1px solid #eee; }
+        .summary-table td { padding: 6px 0; border-bottom: 1px solid #f8fafc; }
     </style>
 </head>
 <body>
@@ -54,8 +54,11 @@
         <div class="stat-item"><small id="outLabel">Month Out</small><strong id="statOut" style="color:var(--out)">R0</strong></div>
     </div>
     <div id="annualBreakdown" style="display:none; margin-top:10px;">
+        <label style="margin-top:10px;">Yearly Spending by Category</label>
+        <table id="annualCatTable" class="summary-table"></table>
+        <br>
         <label>Yearly Spending by Supplier</label>
-        <table id="annualSummaryTable"></table>
+        <table id="annualSummaryTable" class="summary-table"></table>
     </div>
 </div>
 
@@ -88,6 +91,12 @@
     </div>
     
     <button class="btn-process" onclick="processEntry()">SAVE TRANSACTION</button>
+</div>
+
+<!-- MONTHLY CATEGORY BREAKDOWN CARD -->
+<div class="card" id="monthlyCatCard">
+    <label id="monthlyCatTitle">MONTHLY SPENDING BY CATEGORY</label>
+    <table id="monthlyCatTable" class="summary-table"></table>
 </div>
 
 <div id="historyContainer"></div>
@@ -200,23 +209,48 @@
             document.getElementById('statIn').innerText = `R${yearIn.toFixed(0)}`;
             document.getElementById('statOut').innerText = `R${yearOut.toFixed(0)}`;
             document.getElementById('annualBreakdown').style.display = 'block';
+            document.getElementById('monthlyCatCard').style.display = 'none';
             
+            // Generate Yearly per-category table
+            let yearCatMap = {};
+            yearRecords.filter(r => r.type === 'out').forEach(r => {
+                yearCatMap[r.category] = (yearCatMap[r.category] || 0) + r.amount;
+            });
+            let sortedYearCats = Object.entries(yearCatMap).sort((a,b) => b[1] - a[1]);
+            document.getElementById('annualCatTable').innerHTML = sortedYearCats.length ? sortedYearCats.map(([name, val]) => `
+                <tr><td>${name}</td><td style="text-align:right; font-weight:bold;">R${val.toFixed(2)}</td></tr>
+            `).join('') : '<tr><td style="color:#64748b">No expenses recorded</td></tr>';
+
+            // Generate Yearly per-supplier table
             let supMap = {};
             yearRecords.filter(r => r.type === 'out').forEach(r => {
                 supMap[r.supplier] = (supMap[r.supplier] || 0) + r.amount;
             });
             let sortedSups = Object.entries(supMap).sort((a,b) => b[1] - a[1]);
-            document.getElementById('annualSummaryTable').innerHTML = sortedSups.map(([name, val]) => `
+            document.getElementById('annualSummaryTable').innerHTML = sortedSups.length ? sortedSups.map(([name, val]) => `
                 <tr><td>${name}</td><td style="text-align:right; font-weight:bold;">R${val.toFixed(2)}</td></tr>
-            `).join('');
+            `).join('') : '<tr><td style="color:#64748b">No expenses recorded</td></tr>';
         } else {
             document.getElementById('dashTitle').innerText = `${months[selM]} ${selY} PERFORMANCE`;
             document.getElementById('inLabel').innerText = "Month In";
             document.getElementById('outLabel').innerText = "Month Out";
             document.getElementById('annualBreakdown').style.display = 'none';
+            document.getElementById('monthlyCatCard').style.display = 'block';
+
             const filtered = yearRecords.filter(r => r.month === selM);
             document.getElementById('statIn').innerText = `R${filtered.filter(r=>r.type==='in').reduce((s,r)=>s+r.amount,0).toFixed(0)}`;
             document.getElementById('statOut').innerText = `R${filtered.filter(r=>r.type==='out').reduce((s,r)=>s+r.amount,0).toFixed(0)}`;
+
+            // Generate Monthly per-category table
+            document.getElementById('monthlyCatTitle').innerText = `${months[selM]} SPENDING BY CATEGORY`;
+            let monthCatMap = {};
+            filtered.filter(r => r.type === 'out').forEach(r => {
+                monthCatMap[r.category] = (monthCatMap[r.category] || 0) + r.amount;
+            });
+            let sortedMonthCats = Object.entries(monthCatMap).sort((a,b) => b[1] - a[1]);
+            document.getElementById('monthlyCatTable').innerHTML = sortedMonthCats.length ? sortedMonthCats.map(([name, val]) => `
+                <tr><td>${name}</td><td style="text-align:right; font-weight:bold;">R${val.toFixed(2)}</td></tr>
+            `).join('') : '<tr><td style="color:#64748b">No expenses recorded this month</td></tr>';
         }
 
         document.getElementById('avgSpend').innerText = `R${(yearOut / activeMonths).toFixed(0)}`;
